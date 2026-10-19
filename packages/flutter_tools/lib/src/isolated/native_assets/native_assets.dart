@@ -11,6 +11,7 @@ import 'package:hooks_runner/hooks_runner.dart';
 import 'package:logging/logging.dart' as logging;
 import 'package:package_config/package_config_types.dart';
 
+import '../../artifacts.dart';
 import '../../base/common.dart';
 import '../../base/error_handling_io.dart';
 import '../../base/file_system.dart';
@@ -580,10 +581,24 @@ class FlutterNativeAssetsBuildRunnerImpl implements FlutterNativeAssetsBuildRunn
   // in a Flutter process invocation, it should not try to update in place, so
   // use the Dart standalone executable
   // ($FLUTTER_ROOT/bin/cache/dart-sdk/bin/dart).
-  late final Uri _dartExecutable = fileSystem
-      .directory(Cache.flutterRoot)
-      .uri
-      .resolve('bin/cache/dart-sdk/bin/dart${platform.isWindows ? '.exe' : ''}');
+  //
+  // When building against a local engine (for example, the Rust shell's
+  // `sdk/lib/<mode>/` directory overrides [Artifacts] with a local engine
+  // build), the Dart SDK must also come from that engine. The engine rejects
+  // kernels compiled by a Dart SDK built from different sources with an
+  // "Invalid SDK hash" error, so resolve the executable through
+  // [Artifact.engineDartBinary], which points at the ambient `bin/cache`
+  // SDK normally and at the local engine's SDK when one is active.
+  late final Uri _dartExecutable = () {
+    final Artifacts? artifacts = globals.artifacts;
+    if (artifacts != null && artifacts.localEngineInfo != null) {
+      return fileSystem.file(artifacts.getArtifactPath(Artifact.engineDartBinary)).uri;
+    }
+    return fileSystem
+        .directory(Cache.flutterRoot)
+        .uri
+        .resolve('bin/cache/dart-sdk/bin/dart${platform.isWindows ? '.exe' : ''}');
+  }();
 
   late final packageLayout = PackageLayout.fromPackageConfig(
     fileSystem,
